@@ -73,12 +73,14 @@ Both consume shared templates from `azure-platform-iac` via a pipeline `resource
 Bicep makes the app's managed identity exist and sets the SQL Entra admin to a group. It cannot create the *database user* — that's a data-plane operation. `scripts/provision-sql-user.sh` does it (run by the self-hosted agent against private SQL):
 
 ```sql
-CREATE USER [refapp-app-<env>] FROM EXTERNAL PROVIDER WITH OBJECT_ID = '<app-mi-object-id>';
+-- SID is derived from the app MI's CLIENT (app) ID, not its object ID — that's
+-- what Azure SQL maps the login token to.
+CREATE USER [refapp-app-<env>] WITH SID = 0x<appId-derived>, TYPE = E;
 ALTER ROLE db_datareader ADD MEMBER [refapp-app-<env>];
 ALTER ROLE db_datawriter ADD MEMBER [refapp-app-<env>];
 ```
 
-`WITH OBJECT_ID` avoids needing the SQL server to hold the Directory Readers role.
+`WITH SID` (computed from the client ID) avoids needing the SQL server to hold the Entra Directory Readers role — and, unlike `WITH OBJECT_ID = <objectId>`, it actually matches the MI's login token.
 
 ## Before you can deploy — required inputs
 

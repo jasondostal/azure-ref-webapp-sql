@@ -147,7 +147,11 @@ module sqlDatabase '../../azure-platform-iac/modules/data/sql-database.bicep' = 
 
 // Passwordless connection string — the app's system-assigned MI authenticates
 // to SQL. No User ID / Password — nothing secret in app config.
-var sqlConnStr = 'Server=tcp:${sqlServer.outputs.fqdn},1433;Initial Catalog=${sqlDatabase.outputs.name};Authentication=Active Directory Managed Identity;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
+// NOTE: Initial Catalog must be the bare database name. sqlDatabase.outputs.name
+// is the ARM resource name '<server>/<database>' — using it directly points the
+// app at a non-existent DB and surfaces as a confusing SQL *login* failure.
+var databaseName = '${appName}-db-${environment}'
+var sqlConnStr = 'Server=tcp:${sqlServer.outputs.fqdn},1433;Initial Catalog=${databaseName};Authentication=Active Directory Managed Identity;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
 
 module appService '../../azure-platform-iac/modules/compute/app-service.bicep' = {
   name: '${appName}-app-${environment}'

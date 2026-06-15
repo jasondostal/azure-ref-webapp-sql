@@ -37,6 +37,15 @@ if [[ -z "${APP_OID}" ]]; then
 fi
 echo "    object ID: ${APP_OID}"
 
+# Azure SQL maps a managed-identity login to a contained user by a SID derived
+# from the identity's CLIENT (application) ID — NOT its object ID. So resolve
+# the appId and compute the SID. (Creating the user WITH OBJECT_ID = <objectId>
+# produces a non-matching SID and the app fails with a confusing
+# "Login failed for token-identified principal".)
+APP_APPID="$(az ad sp show --id "${APP_OID}" --query appId -o tsv)"
+APP_SID="$(python3 -c 'import uuid,sys; print("0x"+uuid.UUID(sys.argv[1]).bytes_le.hex().upper())' "${APP_APPID}")"
+echo "    client ID: ${APP_APPID}  →  SID ${APP_SID}"
+
 # Ensure go-sqlcmd is available (the platform agent image ships .NET SDK + az
 # CLI but not sqlcmd). Single static binary — pinned for reproducibility.
 SQLCMD="${SQLCMD_BIN:-$(command -v sqlcmd || true)}"
@@ -50,12 +59,13 @@ if [[ -z "${SQLCMD}" ]]; then
   chmod +x "${SQLCMD}"
 fi
 
-# WITH OBJECT_ID avoids needing the SQL server to hold the Entra Directory
-# Readers role — we hand SQL the MI's object ID directly.
+# CREATE USER ... WITH SID = <appId-derived>, TYPE = E binds the contained user
+# to the MI's token SID directly — no Directory Readers role on the SQL server
+# required (the by-name FROM EXTERNAL PROVIDER form would need it).
 read -r -d '' TSQL <<SQL || true
 IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'${APP_NAME}')
 BEGIN
-    CREATE USER [${APP_NAME}] FROM EXTERNAL PROVIDER WITH OBJECT_ID = '${APP_OID}';
+    CREATE USER [${APP_NAME}] WITH SID = ${APP_SID}, TYPE = E;
 END
 ALTER ROLE db_datareader ADD MEMBER [${APP_NAME}];
 ALTER ROLE db_datawriter ADD MEMBER [${APP_NAME}];
