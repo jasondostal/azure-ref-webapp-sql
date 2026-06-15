@@ -31,8 +31,14 @@ param environment string
 @description('Azure region')
 param location string = 'eastus'
 
+@description('Region for Azure SQL. Defaults to the app region (co-located). Override when the home region is capacity-constrained for SQL — the private endpoint stays in the app VNet (this region) and targets the SQL cross-region.')
+param sqlLocation string = location
+
 @description('Base name for all resources (keep short — SQL server names are globally unique)')
 param appName string = 'refapp'
+
+@description('SQL logical server name. Globally unique — override if the default name is taken/reserved. The app reaches it by FQDN, so the name is free to change.')
+param sqlServerName string = '${appName}-sql-${environment}'
 
 @description('Tenant ID (Entra ID directory)')
 param tenantId string
@@ -112,8 +118,8 @@ module appServicePlan '../../azure-platform-iac/modules/compute/app-service-plan
 module sqlServer '../../azure-platform-iac/modules/data/sql-server.bicep' = {
   name: '${appName}-sql-${environment}'
   params: {
-    name: '${appName}-sql-${environment}'
-    location: location
+    name: sqlServerName
+    location: sqlLocation
     adminLogin: sqlAdminLogin
     adminPassword: sqlAdminPassword
     disablePublicAccess: true
@@ -131,7 +137,7 @@ module sqlDatabase '../../azure-platform-iac/modules/data/sql-database.bicep' = 
   name: '${appName}-sqldb-${environment}'
   params: {
     name: '${appName}-db-${environment}'
-    location: location
+    location: sqlLocation
     sqlServerName: sqlServer.outputs.name
     skuName: sqlSkuName
     skuTier: sqlSkuTier
@@ -158,9 +164,8 @@ module appService '../../azure-platform-iac/modules/compute/app-service.bicep' =
     connectionStrings: {
       DefaultConnection: sqlConnStr
     }
-    appSettings: {
-      ASPNETCORE_ENVIRONMENT: (environment == 'prod' ? 'Production' : 'Staging')
-    }
+    // ASPNETCORE_ENVIRONMENT is set by the platform module's defaults — don't
+    // duplicate it here or App Service rejects the deploy (duplicate app setting).
   }
 }
 
