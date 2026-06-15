@@ -1,0 +1,122 @@
+# Azure Pipelines — App CI/CD
+#
+# BUILD ONCE, DEPLOY MANY (single-branch model)
+# ----------------------------------------------
+# One branch: main. A merge triggers ONE run that builds a single immutable
+# artifact and promotes that SAME artifact through a linear, approval-gated
+# chain:  Build → Scan → dev → qa → stage → prod.
+#
+# Build + Scan run on Microsoft-HOSTED agents (they only need the source).
+# DEPLOY stages run on the SELF-HOSTED, VNet-injected pool — the App Service
+# has a private SCM endpoint, so a hosted agent physically cannot push to it.
+# That pool override is the line the kitchen-sink reference repo was missing.
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - src/**
+      - pipelines/azure-pipelines.yml
+      - Directory.Build.props
+      - .editorconfig
+      - '*.slnx'
+    exclude:
+      - infra/**
+
+pr:
+  branches:
+    include:
+      - main
+
+# Shared pipeline templates live in the platform repo.
+resources:
+  repositories:
+    - repository: platform
+      type: git
+      name: azure-platform-iac
+      ref: main
+
+variables:
+  buildConfiguration: 'Release'
+  dotnetVersion: '10.x'
+  artifactName: 'refapp'
+
+stages:
+  # ── 1. BUILD — restore, compile, test, publish ONCE (shared template) ───────
+  - stage: Build
+    displayName: '1. Build'
+    jobs:
+      - job: BuildApp
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - template: pipelines/templates/build-dotnet.yml@platform
+            parameters:
+              dotnetVersion: '$(dotnetVersion)'
+              solutionFile: '**/*.slnx'
+              buildConfig: '$(buildConfiguration)'
+              publishProject: 'src/ReferenceWebApp.Web/ReferenceWebApp.Web.csproj'
+              artifactName: '$(artifactName)'
+
+  # ── 2. SCAN — security gates (shared template) ──────────────────────────────
+  - stage: Scan
+    displayName: '2. Scan'
+    dependsOn: Build
+    jobs:
+      - job: SecurityScan
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - checkout: self
+          - template: pipelines/templates/security-gates.yml@platform
+
+  # ── 3-6. DEPLOY — same artifact, linear promotion, SELF-HOSTED pool ─────────
+  - template: pipelines/templates/deploy-environment.yml@platform
+    parameters:
+      environment: 'dev'
+      adoEnvironment: 'refapp-dev'         # no approval — auto
+      dependsOn: ['Scan']
+      variableGroups: ['vg-refapp-shared', 'vg-refapp-dev']
+      serviceConnection: '$(devServiceConnection)'
+      appName: '$(devAppName)'
+      targetType: 'web'
+      artifactName: '$(artifactName)'
+      pool: { name: 'refapp-dev' }         # VNet-injected self-hosted agent
+
+  - template: pipelines/templates/deploy-environment.yml@platform
+    parameters:
+      environment: 'qa'
+      adoEnvironment: 'refapp-qa'          # QA lead approval
+      dependsOn: ['Deploy_dev']
+      variableGroups: ['vg-refapp-shared', 'vg-refapp-qa']
+      serviceConnection: '$(qaServiceConnection)'
+      appName: '$(qaAppName)'
+      targetType: 'web'
+      artifactName: '$(artifactName)'
+      pool: { name: 'refapp-qa' }
+
+  - template: pipelines/templates/deploy-environment.yml@platform
+    parameters:
+      environment: 'staging'
+      adoEnvironment: 'refapp-stage'       # tech lead approval
+      dependsOn: ['Deploy_qa']
+      variableGroups: ['vg-refapp-shared', 'vg-refapp-stage']
+      serviceConnection: '$(stageServiceConnection)'
+      appName: '$(stageAppName)'
+      targetType: 'web'
+      artifactName: '$(artifactName)'
+      pool: { name: 'refapp-stage' }
+
+  - template: pipelines/templates/deploy-environment.yml@platform
+    parameters:
+      environment: 'prod'
+      adoEnvironment: 'refapp-prod'        # VP + business-hours gate
+      dependsOn: ['Deploy_staging']
+      variableGroups: ['vg-refapp-shared', 'vg-refapp-prod']
+      serviceConnection: '$(prodServiceConnection)'
+      appName: '$(prodAppName)'
+      targetType: 'web'
+      artifactName: '$(artifactName)'
+      pool: { name: 'refapp-prod' }

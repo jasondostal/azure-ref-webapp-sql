@@ -1,0 +1,23 @@
+# .gitignore — azure-ref-webapp-sql
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+.vs/
+.vscode/
+src/**/publish/
+src/**/out/
+
+# Generated ARM (Bicep compiles to JSON locally; not committed)
+infra/**/*.json
+
+# Secrets — never commit
+*.pfx
+*.pem
+*.env
+!.env.example
+appsettings.*.json
+!appsettings.json

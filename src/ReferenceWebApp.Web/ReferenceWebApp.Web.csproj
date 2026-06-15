@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ReferenceWebApp.Web</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Passwordless SQL: the driver acquires an Entra token from the App
+         Service managed identity when the connection string sets
+         Authentication=Active Directory Managed Identity. No secret in config. -->
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.1" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,26 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Reference Web App";
+}
+
+<h1>azure-ref-webapp-sql</h1>
+<p>Monolithic .NET web app on App Service, reaching Azure SQL over a private endpoint with a passwordless managed identity.</p>
+
+<h2>SQL connectivity</h2>
+<dl>
+    <dt>Status</dt>
+    <dd><strong>@Model.SqlStatus</strong></dd>
+    @if (Model.ServerName is not null)
+    {
+        <dt>@@SERVERNAME</dt>
+        <dd><code>@Model.ServerName</code></dd>
+    }
+    @if (Model.Error is not null)
+    {
+        <dt>Error</dt>
+        <dd><code>@Model.Error</code></dd>
+    }
+</dl>
+
+<p>Health probes: <a href="/healthz">/healthz</a> (liveness) · <a href="/readyz">/readyz</a> (SQL readiness)</p>
