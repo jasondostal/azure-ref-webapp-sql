@@ -74,7 +74,12 @@ stages:
                           --location eastus \
                           --template-file infra/infra.bicep \
                           --parameters infra/params/${{ env }}.infra.bicepparam \
-                          --parameters azpToken='$(azpToken)'
+                          --parameters azpToken='$(azpToken)' \
+                                       azpUrl='$(azpUrl)' \
+                                       azpPool='$(azpPool)' \
+                                       acrResourceId='$(acrResourceId)' \
+                                       acrLoginServer='$(acrLoginServer)' \
+                                       agentImage='$(agentImage)'
 
         # ── 2. APP LAYER — app team, RG-scoped, hosted ───────────────────────
         - deployment: App_${{ env }}
