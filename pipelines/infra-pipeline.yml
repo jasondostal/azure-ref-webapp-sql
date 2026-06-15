@@ -2,11 +2,11 @@
 #
 # Separation of duties made physical (see docs/ARCHITECTURE.md):
 #
-#   INFRA LAYER  (infra.bicep)  → deployed on $(infraServiceConnection), a
+#   INFRA LAYER  (infra.bicep)  → deployed on the sc-refapp-infra connection, a
 #       SUBSCRIPTION-scoped connection the platform team owns. Creates the RG,
 #       VNet + private DNS, and the self-hosted agent (+ its cross-RG ACR grant).
 #
-#   APP LAYER    (app.bicep)    → deployed on $(<env>ServiceConnection), the
+#   APP LAYER    (app.bicep)    → deployed on the sc-refapp-<env> connection, the
 #       RESOURCE-GROUP-scoped connection from `onboard-subscription.sh
 #       --rbac-scope rg`. Creates App Service + SQL + private endpoints INSIDE
 #       rg-refapp-<env>. This identity physically cannot touch another env.
@@ -66,7 +66,7 @@ stages:
                   - task: AzureCLI@2
                     displayName: 'az deployment sub create (infra.bicep)'
                     inputs:
-                      azureSubscription: '$(infraServiceConnection)'
+                      azureSubscription: 'sc-refapp-infra'
                       scriptType: 'bash'
                       scriptLocation: 'inlineScript'
                       inlineScript: |
@@ -96,7 +96,7 @@ stages:
                   - task: AzureCLI@2
                     displayName: 'az deployment group create (app.bicep)'
                     inputs:
-                      azureSubscription: '$(${{ env }}ServiceConnection)'   # RG-scoped
+                      azureSubscription: 'sc-refapp-${{ env }}'   # RG-scoped
                       scriptType: 'bash'
                       scriptLocation: 'inlineScript'
                       inlineScript: |
@@ -122,7 +122,7 @@ stages:
             - task: AzureCLI@2
               displayName: 'Create app MI DB user'
               inputs:
-                azureSubscription: '$(${{ env }}ServiceConnection)'
+                azureSubscription: 'sc-refapp-${{ env }}'
                 scriptType: 'bash'
                 scriptLocation: 'inlineScript'
                 inlineScript: |

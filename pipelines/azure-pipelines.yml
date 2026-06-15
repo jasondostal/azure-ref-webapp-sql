@@ -79,7 +79,7 @@ stages:
       adoEnvironment: 'refapp-dev'         # no approval — auto
       dependsOn: ['Scan']
       variableGroups: ['vg-refapp-shared', 'vg-refapp-dev']
-      serviceConnection: '$(devServiceConnection)'
+      serviceConnection: 'sc-refapp-dev'
       appName: '$(devAppName)'
       targetType: 'web'
       artifactName: '$(artifactName)'
@@ -91,7 +91,7 @@ stages:
       adoEnvironment: 'refapp-qa'          # QA lead approval
       dependsOn: ['Deploy_dev']
       variableGroups: ['vg-refapp-shared', 'vg-refapp-qa']
-      serviceConnection: '$(qaServiceConnection)'
+      serviceConnection: 'sc-refapp-qa'
       appName: '$(qaAppName)'
       targetType: 'web'
       artifactName: '$(artifactName)'
@@ -103,7 +103,7 @@ stages:
       adoEnvironment: 'refapp-stage'       # tech lead approval
       dependsOn: ['Deploy_qa']
       variableGroups: ['vg-refapp-shared', 'vg-refapp-stage']
-      serviceConnection: '$(stageServiceConnection)'
+      serviceConnection: 'sc-refapp-stage'
       appName: '$(stageAppName)'
       targetType: 'web'
       artifactName: '$(artifactName)'
@@ -115,7 +115,7 @@ stages:
       adoEnvironment: 'refapp-prod'        # VP + business-hours gate
       dependsOn: ['Deploy_staging']
       variableGroups: ['vg-refapp-shared', 'vg-refapp-prod']
-      serviceConnection: '$(prodServiceConnection)'
+      serviceConnection: 'sc-refapp-prod'
       appName: '$(prodAppName)'
       targetType: 'web'
       artifactName: '$(artifactName)'
