@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using ReferenceWebApp.Web;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -51,10 +52,3 @@ app.MapGet("/readyz", async (SqlConnectionFactory factory) =>
 });
 
 app.Run();
-
-/// <summary>Tiny factory so pages/endpoints get a fresh SqlConnection without
-/// leaking the connection string around the app.</summary>
-public sealed class SqlConnectionFactory(string connectionString)
-{
-    public SqlConnection Create() => new(connectionString);
-}
