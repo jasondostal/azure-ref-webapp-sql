@@ -18,9 +18,10 @@ It composes Bicep modules from [azure-platform-iac](../azure-platform-iac) — n
 | Repo | Purpose |
 |------|---------|
 | [azure-platform-iac](../azure-platform-iac) | Platform modules (this repo's dependencies) + shared pipeline templates |
+| [azure-iac-patterns](../azure-iac-patterns) | Standalone module library |
+| [azure-project-starter](../azure-project-starter) | Cookiecutter — generate a new wired-up service repo |
 | **azure-ref-webapp-sql** (this repo) | Minimal private-by-default reference: web app + SQL + 4 envs |
-| [azure-iac-reference](../azure-iac-reference) | Maximalist showcase (adds APIM, B2C, Foundry, AI Search) |
-| [azure-project-starter](../azure-project-starter) | Cookiecutter — generate a new project repo |
+| [azure-playground](../azure-playground) | The cheap, always-on sandbox — the inverse of this repo (public, 1 RG, scale-to-zero) |
 
 ## What gets deployed (per environment)
 

@@ -54,4 +54,4 @@ The self-hosted agent is therefore not a performance choice — it's the only th
 
 ## What this reference deliberately omits
 
-To stay the *minimal* baseline: no APIM, no Entra B2C, no AI Search / Foundry, no Service Bus, no Cosmos, no Key Vault-backed app secrets (the app has none). Those live in [azure-iac-reference](../../azure-iac-reference) (the maximalist showcase) and the [patterns catalog](../../azure-iac-patterns). Add them by composing the same platform modules when an app actually needs them.
+To stay the *minimal* baseline: no APIM, no Entra B2C, no AI Search / Foundry, no Service Bus, no Cosmos, no Key Vault-backed app secrets (the app has none). Those modules live in [azure-platform-iac](../../azure-platform-iac) and the standalone [patterns library](../../azure-iac-patterns); experiment with them cheaply in [azure-playground](../../azure-playground). Add them here by composing the same platform modules when an app actually needs them.
