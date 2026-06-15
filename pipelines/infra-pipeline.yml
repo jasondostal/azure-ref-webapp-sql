@@ -1,21 +1,21 @@
-# Azure Pipelines — Infrastructure as Code (Bicep)
+# Azure Pipelines — Infrastructure as Code (Bicep), TWO-LAYER
 #
-# BUILD ONCE, DEPLOY MANY (single-branch model)
-# ----------------------------------------------
-# One branch: main. Triggers on infra/** only. One run validates (what-if
-# against every env), then promotes the apply through dev → qa → stage → prod,
+# Separation of duties made physical (see docs/ARCHITECTURE.md):
+#
+#   INFRA LAYER  (infra.bicep)  → deployed on $(infraServiceConnection), a
+#       SUBSCRIPTION-scoped connection the platform team owns. Creates the RG,
+#       VNet + private DNS, and the self-hosted agent (+ its cross-RG ACR grant).
+#
+#   APP LAYER    (app.bicep)    → deployed on $(<env>ServiceConnection), the
+#       RESOURCE-GROUP-scoped connection from `onboard-subscription.sh
+#       --rbac-scope rg`. Creates App Service + SQL + private endpoints INSIDE
+#       rg-refapp-<env>. This identity physically cannot touch another env.
+#
+#   SQL PROVISION (provision-sql-user.sh) → on the SELF-HOSTED pool (private SQL
+#       is unreachable from hosted agents).
+#
+# Build-once-deploy-many: one run promotes dev → qa → stage → prod, each stage
 # gated by ADO Environment approvals.
-#
-# TWO-PLANE DEPLOY (the private-by-default wrinkle):
-#   • The Bicep apply is pure ARM control-plane — it can run on a Microsoft-
-#     HOSTED agent. This is also what bootstraps the self-hosted agent ACI on a
-#     brand-new environment.
-#   • Provisioning the app's managed-identity DB user requires a DATA-plane
-#     connection to PRIVATE SQL — so it runs on the SELF-HOSTED, VNet-injected
-#     pool. A hosted agent cannot reach the private endpoint.
-#
-# Secret parameters (tenantId, sqlAdminLogin, sqlAdminPassword, azpToken) come
-# from ADO Variable Groups linked to Key Vault — never in source.
 
 trigger:
   branches:
@@ -38,38 +38,11 @@ variables:
   - group: vg-refapp-shared
 
 stages:
-  # ── WHAT-IF — surface the real diff for every env before any apply ──────────
-  - stage: WhatIf
-    displayName: 'What-If (all envs)'
-    jobs:
-      - job: WhatIfAll
-        pool:
-          vmImage: 'ubuntu-latest'
-        steps:
-          - ${{ each env in split('dev,qa,stage,prod', ',') }}:
-            - task: AzureCLI@2
-              displayName: 'What-If ${{ upper(env) }}'
-              inputs:
-                azureSubscription: '$(${{ env }}ServiceConnection)'
-                scriptType: 'bash'
-                scriptLocation: 'inlineScript'
-                inlineScript: |
-                  az deployment sub what-if \
-                    --location eastus \
-                    --template-file infra/main.bicep \
-                    --parameters infra/params/${{ env }}.bicepparam \
-                    --parameters tenantId='$(tenantId)' \
-                                 sqlAdminLogin='$(sqlAdminLogin)' \
-                                 sqlAdminPassword='$(sqlAdminPassword)' \
-                                 azpToken='$(azpToken)'
-
-  # ── DEPLOY — one stage per env: ARM apply (hosted) → SQL provision (self) ───
   - ${{ each env in split('dev,qa,stage,prod', ',') }}:
     - stage: Deploy_${{ env }}
-      displayName: 'Deploy Infra → ${{ upper(env) }}'
+      displayName: 'Deploy → ${{ upper(env) }}'
+      # dev matches no condition → empty dependsOn → runs first.
       dependsOn:
-        - ${{ if eq(env, 'dev') }}:
-          - WhatIf
         - ${{ if eq(env, 'qa') }}:
           - Deploy_dev
         - ${{ if eq(env, 'stage') }}:
@@ -79,10 +52,10 @@ stages:
       variables:
         - group: vg-refapp-${{ env }}
       jobs:
-        # ARM control-plane apply — bootstraps the agent on a fresh env.
-        - deployment: DeployArm_${{ env }}
-          displayName: 'Bicep apply (${{ env }})'
-          environment: 'refapp-${{ env }}'   # approvals configured in ADO UI
+        # ── 1. INFRA LAYER — platform team, subscription-scoped, hosted ───────
+        - deployment: Infra_${{ env }}
+          displayName: 'Infra layer (RG + VNet + agent)'
+          environment: 'refapp-${{ env }}'
           pool:
             vmImage: 'ubuntu-latest'
           strategy:
@@ -91,26 +64,50 @@ stages:
                 steps:
                   - checkout: self
                   - task: AzureCLI@2
-                    displayName: 'az deployment sub create (${{ env }})'
+                    displayName: 'az deployment sub create (infra.bicep)'
                     inputs:
-                      azureSubscription: '$(${{ env }}ServiceConnection)'
+                      azureSubscription: '$(infraServiceConnection)'
                       scriptType: 'bash'
                       scriptLocation: 'inlineScript'
                       inlineScript: |
                         az deployment sub create \
                           --location eastus \
-                          --template-file infra/main.bicep \
+                          --template-file infra/infra.bicep \
+                          --parameters infra/params/${{ env }}.infra.bicepparam \
+                          --parameters azpToken='$(azpToken)'
+
+        # ── 2. APP LAYER — app team, RG-scoped, hosted ───────────────────────
+        - deployment: App_${{ env }}
+          displayName: 'App layer (App Service + SQL + PE)'
+          dependsOn: Infra_${{ env }}
+          environment: 'refapp-${{ env }}'
+          pool:
+            vmImage: 'ubuntu-latest'
+          strategy:
+            runOnce:
+              deploy:
+                steps:
+                  - checkout: self
+                  - task: AzureCLI@2
+                    displayName: 'az deployment group create (app.bicep)'
+                    inputs:
+                      azureSubscription: '$(${{ env }}ServiceConnection)'   # RG-scoped
+                      scriptType: 'bash'
+                      scriptLocation: 'inlineScript'
+                      inlineScript: |
+                        az deployment group create \
+                          --resource-group rg-refapp-${{ env }} \
+                          --template-file infra/app.bicep \
                           --parameters infra/params/${{ env }}.bicepparam \
                           --parameters tenantId='$(tenantId)' \
                                        sqlAdminLogin='$(sqlAdminLogin)' \
                                        sqlAdminPassword='$(sqlAdminPassword)' \
-                                       azpToken='$(azpToken)'
+                                       sqlAdminGroupObjectId='$(sqlAdminGroupObjectId)'
 
-        # Data-plane: create the app MI's DB user against PRIVATE SQL.
-        # Runs on the self-hosted pool — the only thing inside the VNet.
+        # ── 3. PROVISION SQL — self-hosted (private SQL) ─────────────────────
         - job: ProvisionSql_${{ env }}
           displayName: 'Provision SQL user (${{ env }})'
-          dependsOn: DeployArm_${{ env }}
+          dependsOn: App_${{ env }}
           pool:
             name: 'refapp-${{ env }}'        # self-hosted, VNet-injected
           steps:
