@@ -107,7 +107,9 @@ stages:
                           --parameters tenantId='$(tenantId)' \
                                        sqlAdminLogin='$(sqlAdminLogin)' \
                                        sqlAdminPassword='$(sqlAdminPassword)' \
-                                       sqlAdminGroupObjectId='$(sqlAdminGroupObjectId)'
+                                       sqlAdminGroupObjectId='$(sqlAdminGroupObjectId)' \
+                                       sqlLocation='$(sqlLocation)' \
+                                       sqlServerName='$(sqlServerName)'
 
         # ── 3. PROVISION SQL — self-hosted (private SQL) ─────────────────────
         - job: ProvisionSql_${{ env }}
@@ -126,7 +128,7 @@ stages:
                 inlineScript: |
                   chmod +x scripts/provision-sql-user.sh
                   scripts/provision-sql-user.sh \
-                    "refapp-sql-${{ env }}.database.windows.net" \
+                    "$(sqlServerName).database.windows.net" \
                     "refapp-db-${{ env }}" \
                     "refapp-app-${{ env }}" \
                     "rg-refapp-${{ env }}"
