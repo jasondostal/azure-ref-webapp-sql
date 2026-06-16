@@ -1,0 +1,109 @@
+digraph azure_topology {
+  graph [bgcolor="#0d1117", rankdir=TB, compound=true, fontname="Helvetica",
+         fontcolor="#e6edf3", labelloc="t", fontsize=22,
+         label="Azure Private-by-Default Topology — ref-webapp-sql + Cosmos + APIM\n4 envs (RG-per-env) + shared RG · private endpoints everywhere · self-hosted ADO agents",
+         nodesep=0.35, ranksep=0.55, pad=0.4];
+  node  [fontname="Helvetica", fontsize=11, fontcolor="#e6edf3", style="filled,rounded",
+         shape=box, color="#30363d", penwidth=1.2];
+  edge  [color="#8b949e", fontname="Helvetica", fontsize=9, fontcolor="#8b949e"];
+
+  // ─────────────────────────── SHARED RG ───────────────────────────
+  subgraph cluster_shared {
+    label="rg-refapp-shared  (platform-owned)";
+    fontcolor="#e3b341"; color="#e3b341"; style="rounded"; fontsize=15; penwidth=2;
+
+    acr      [label="Shared ACR\nado-agent + app images", fillcolor="#3d2e00", color="#e3b341"];
+
+    subgraph cluster_dns {
+      label="Centralized Private DNS Zones  (linked to all 4 env VNets)";
+      fontcolor="#39c5cf"; color="#39c5cf"; style="rounded,dashed"; fontsize=12;
+      dns_sql    [label="privatelink.database.windows.net", fillcolor="#06303a", color="#39c5cf"];
+      dns_web    [label="privatelink.azurewebsites.net", fillcolor="#06303a", color="#39c5cf"];
+      dns_cosmos [label="privatelink.documents.azure.com", fillcolor="#06303a", color="#39c5cf"];
+      dns_apim   [label="privatelink.azure-api.net  (APIM)", fillcolor="#06303a", color="#39c5cf"];
+    }
+  }
+
+  // ─────────────────────────── DEV (detailed) ───────────────────────────
+  subgraph cluster_dev {
+    label="rg-refapp-dev   ·   VNet 10.10.0.0/16";
+    fontcolor="#58a6ff"; color="#58a6ff"; style="rounded"; fontsize=15; penwidth=2;
+
+    // PaaS — multi-tenant, OUTSIDE your VNet, reached via PE
+    sql_dev    [label="Azure SQL\n(public access OFF)", fillcolor="#3a1d00", color="#f0883e", style="filled,rounded,dashed"];
+    cosmos_dev [label="Cosmos DB\n(public access OFF)", fillcolor="#062a26", color="#2dd4bf", style="filled,rounded,dashed"];
+
+    subgraph cluster_dev_vnet {
+      label="VNet";
+      color="#1f6feb"; fontcolor="#58a6ff"; style="rounded"; fontsize=11;
+
+      subgraph cluster_dev_app {
+        label="snet-app-service  10.10.0.0/24\n(delegated: Microsoft.Web/serverFarms)";
+        color="#238636"; fontcolor="#3fb950"; style="rounded"; fontsize=10;
+        appsvc_dev [label="App Service\n.NET 10 · MI · VNet-integrated", fillcolor="#0f2a14", color="#3fb950"];
+      }
+      subgraph cluster_dev_pe {
+        label="snet-private-endpoints  10.10.1.0/24";
+        color="#8957e5"; fontcolor="#bc8cff"; style="rounded"; fontsize=10;
+        pe_sql_dev    [label="PE → SQL", fillcolor="#1d1233", color="#bc8cff"];
+        pe_app_dev    [label="PE → App\n(inbound)", fillcolor="#1d1233", color="#bc8cff"];
+        pe_cosmos_dev [label="PE → Cosmos", fillcolor="#1d1233", color="#bc8cff"];
+      }
+      subgraph cluster_dev_agent {
+        label="snet-ado-agents  10.10.2.0/24\n(delegated: ContainerInstance)";
+        color="#9e6a03"; fontcolor="#e3b341"; style="rounded"; fontsize=10;
+        agent_dev [label="Self-hosted\nADO Agent (ACI)", fillcolor="#3d2e00", color="#e3b341"];
+      }
+      subgraph cluster_dev_apim {
+        label="snet-apim  10.10.3.0/24\n(VNet INJECTION — internal mode)";
+        color="#da3633"; fontcolor="#ff7b72"; style="rounded"; fontsize=10;
+        apim_dev [label="APIM (internal)\nprivate VIP gateway", fillcolor="#3d0d0c", color="#ff7b72"];
+      }
+    }
+  }
+
+  // ─────────────────────────── qa / stage / prod (collapsed) ───────────────────────────
+  subgraph cluster_qa {
+    label="rg-refapp-qa   ·   VNet 10.20.0.0/16";
+    fontcolor="#58a6ff"; color="#30363d"; style="rounded"; fontsize=13;
+    qa_box [label="Identical topology:\napp-service · private-endpoints · ado-agents · apim subnets\nApp Service + SQL/Cosmos PEs + APIM + self-hosted agent", fillcolor="#161b22", color="#30363d"];
+  }
+  subgraph cluster_stage {
+    label="rg-refapp-stage   ·   VNet 10.30.0.0/16";
+    fontcolor="#58a6ff"; color="#30363d"; style="rounded"; fontsize=13;
+    stage_box [label="Identical topology\n(SKUs bumped: P1v3 / S1+ · alwaysOn)", fillcolor="#161b22", color="#30363d"];
+  }
+  subgraph cluster_prod {
+    label="rg-refapp-prod   ·   VNet 10.40.0.0/16";
+    fontcolor="#58a6ff"; color="#30363d"; style="rounded"; fontsize=13;
+    prod_box [label="Identical topology\n(prod SKUs · alwaysOn)", fillcolor="#161b22", color="#30363d"];
+  }
+
+  // ─────────────────────────── EDGES (dev traffic paths) ───────────────────────────
+  apim_dev   -> pe_app_dev    [label="private call", color="#ff7b72", penwidth=1.5];
+  pe_app_dev -> appsvc_dev    [style=dashed, color="#bc8cff"];
+  appsvc_dev -> pe_sql_dev    [label="outbound (VNet int.)", color="#3fb950", penwidth=1.5];
+  appsvc_dev -> pe_cosmos_dev [color="#3fb950", penwidth=1.5];
+  pe_sql_dev    -> sql_dev    [style=dashed, color="#f0883e"];
+  pe_cosmos_dev -> cosmos_dev [style=dashed, color="#2dd4bf"];
+  agent_dev  -> acr           [label="AcrPull (image)", style=dashed, color="#e3b341", lhead=cluster_shared];
+
+  // DNS: VNet linked to shared zones + PEs auto-register A records
+  pe_sql_dev -> dns_sql [label="VNet link + auto A-record", style=dotted, color="#39c5cf", ltail=cluster_dev_vnet, lhead=cluster_dns, constraint=false];
+
+  // collapsed envs share the same DNS + ACR
+  qa_box    -> acr [style=dotted, color="#484f58", lhead=cluster_shared, constraint=false];
+  stage_box -> acr [style=dotted, color="#484f58", lhead=cluster_shared, constraint=false];
+  prod_box  -> acr [style=dotted, color="#484f58", lhead=cluster_shared, constraint=false];
+
+  // ─────────────────────────── LEGEND ───────────────────────────
+  subgraph cluster_legend {
+    label="Legend — connectivity mechanisms";
+    fontcolor="#e6edf3"; color="#30363d"; style="rounded"; fontsize=12;
+    l_pe   [label="Private Endpoint (Private Link)\nNIC in your subnet → PaaS instance", fillcolor="#1d1233", color="#bc8cff"];
+    l_inj  [label="VNet Injection\nservice deployed INTO a delegated subnet\n(APIM internal, SQL MI, Container Apps)", fillcolor="#3d0d0c", color="#ff7b72"];
+    l_int  [label="VNet Integration\nApp Service OUTBOUND into the VNet", fillcolor="#0f2a14", color="#3fb950"];
+    l_paas [label="PaaS (multi-tenant)\nlives OUTSIDE your VNet — dashed border", fillcolor="#3a1d00", color="#f0883e", style="filled,rounded,dashed"];
+    l_pe -> l_inj [style=invis]; l_inj -> l_int [style=invis]; l_int -> l_paas [style=invis];
+  }
+}

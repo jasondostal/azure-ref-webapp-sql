@@ -25,6 +25,26 @@ The four environments are byte-for-byte the same shape. They differ only in:
 - SKU sizing (Basic in dev/qa, PremiumV3 + Standard SQL in stage/prod)
 - ADO Environment approval gates (none in dev; lead/tech-lead/VP up the chain)
 
+### Network diagram — the pattern at scale
+
+The diagram below shows the same private-by-default pattern across all four
+environments plus a shared, platform-owned RG, **and layers in two services this
+minimal reference doesn't ship** (Cosmos DB and APIM) to illustrate how the model
+extends. It's illustrative, not a literal map of this repo — see
+[What this reference deliberately omits](#what-this-reference-deliberately-omits).
+
+It also makes the three connectivity mechanisms visible side by side: a
+**private endpoint** (SQL, Cosmos, App Service inbound) is a NIC in your subnet;
+**VNet integration** is App Service's *outbound* path into the VNet; and
+**VNet injection** (APIM internal mode) puts the service *inside* a delegated
+subnet — the one case that always needs new subnet address space, so it's always
+an infra-layer decision.
+
+![Network topology](azure-ref-network-topology.svg)
+
+> Source: [`azure-ref-network-topology.dot`](azure-ref-network-topology.dot)
+> (Graphviz). High-resolution raster: [`azure-ref-network-topology.png`](azure-ref-network-topology.png).
+
 ## Request path: browser → app → SQL
 
 1. A user hits the App Service public hostname (the app is the front door; only the *data plane* goes private). The App Service also has a private endpoint for internal/private-network access.
